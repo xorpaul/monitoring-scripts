@@ -112,6 +112,8 @@ else
     begin
         summary = YAML.load_file(summaryfile)
         lastrun = summary["time"]["last_run"]
+        time = summary["time"]
+        changes = summary["changes"]["total"]
 
         # machines that outright failed to run like on missing dependencies
         # are treated as huge failures.  The yaml file will be valid but
@@ -145,6 +147,8 @@ if disable_perfdata
   perfdata_time = ""
 else
   perfdata_time = "|time_since_last_run=#{time_since_last_run}s;#{warn};#{crit};0 failed_resources=#{failcount_resources};;;0 failed_events=#{failcount_events};;;0"
+  time.each {|k,v| perfdata_time += " run_time_#{k}=#{v}s" if k != 'last_run'}
+  perfdata_time += " total_changes=#{changes};;;0"
 end
 
 unless failures
@@ -170,7 +174,7 @@ unless failures
         else
             puts "WARNING: last run #{time_since_last_run_string} with #{failcount_resources} failed resources #{failcount_events} failed events and currently disabled with reason: #{disabled_message}#{perfdata_time}"
             exit 1
-         end
+        end
 
         exit 0
     end
