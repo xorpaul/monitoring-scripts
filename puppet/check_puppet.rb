@@ -1,4 +1,4 @@
-#!/usr/bin/ruby
+#!/opt/puppetlabs/puppet/bin/ruby
 
 # A simple nagios check that should be run as root
 # perhaps under the mcollective NRPE plugin and
@@ -18,6 +18,7 @@ require 'optparse'
 require 'yaml'
 require 'socket'
 require 'openssl'
+require 'puppet'
 
 statedir_puppet_3 = "/var/lib/puppet/state"
 statedir_puppet_4 = "/opt/puppetlabs/puppet/cache/state"
@@ -42,9 +43,11 @@ total_failure = false
 enabled_only = false
 failures = false
 disable_perfdata = false
+disable_multiline_failed_resources_output = false
 disabled_message = "reason not specified"
 report_puppetserver = false
 check_clientcert_age = false
+enable_check_mk_html_breaks = false
 
 opt = OptionParser.new
 
@@ -78,6 +81,7 @@ opt.on("--state-dir [FILE]", "Location of the state directory containing lock an
     agent_disabled_lockfile = statedir + "/agent_disabled.lock"
     statefile = statedir + "/state.yaml"
     summaryfile = statedir + "/last_run_summary.yaml"
+    reportfile = statedir + "/last_run_report.yaml"
 end
 
 opt.on("--agent-lock-file [FILE]", "-l", "Location of the agent run lock file, default #{agent_lockfile}") do |f|
@@ -96,8 +100,20 @@ opt.on("--summary-file [FILE]", "-s", "Location of the summary file, default #{s
     summaryfile = f
 end
 
+opt.on("--report-file [FILE]", "-s", "Location of the report file, default #{reportfile}") do |f|
+    reportfile = f
+end
+
 opt.on("--disable-perfdata", "-x", "Disable performance data output") do |f|
     disable_perfdata = f
+end
+
+opt.on("--disable-multiline-failed-resources-output", "-m", "Disable printing the failed Puppet resource messages in the multiline output") do |f|
+    disable_multiline_failed_resources_output = f
+end
+
+opt.on("--enable-checkmk-html-breaks", "-b", "add </br> html to the multiline newline output") do |f|
+    enable_check_mk_html_breaks = true
 end
 
 opt.parse!
@@ -122,6 +138,31 @@ end
 
 
 lastrun = File.stat(statefile).mtime.to_i if File.exists?(statefile)
+
+def report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_multiline_failed_resources_output)
+  return "", "" if disable_multiline_failed_resources_output
+  failed_resources = []
+  long_output_failed_resources = ""
+  begin
+    report = YAML.load_file(reportfile)
+    report.resource_statuses.each do |resource_name,resource|
+      if resource.failed
+        failed_resources << resource_name
+        single_long_output_failed_resources = "\nResource #{resource_name} failed:\n\t#{resource.events[0].message}"
+        single_long_output_failed_resources = single_long_output_failed_resources.gsub("\n","</br>\n") if enable_check_mk_html_breaks
+        long_output_failed_resources += single_long_output_failed_resources
+      end
+    end
+  rescue => e
+    puts "Unable to report the failed resource messages, because:\n#{e}"
+  end
+
+  failed_resources_text = "Failed Puppet resources: "
+  failed_resources_text += failed_resources.join(" ")
+  failed_resources_text = "There are #{failed_resources.size} failed Puppet resources." if failed_resources.size > 10
+
+  return failed_resources_text+" ", long_output_failed_resources
+end
 
 unless File.readable?(summaryfile)
     puts "UNKNOWN: Summary file not found or not readable. Check #{summaryfile}"
@@ -215,7 +256,8 @@ unless failures
     end
 
     if total_failure
-        puts "CRITICAL: FAILED - Puppet failed to run. Missing dependencies? Catalog compilation failed? Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}"
+        failed_resources, long_output_failed_resources = report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_multiline_failed_resources_output)
+        puts "CRITICAL: FAILED - Puppet failed to run. #{failed_resources}Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}\n#{long_output_failed_resources}"
         exit 2
     elsif time_since_last_run >= crit
         puts "CRITICAL: last run #{time_since_last_run_string}, expected < #{crit}s#{used_puppetserver}#{perfdata_time}"
@@ -242,7 +284,8 @@ else
     end
 
     if total_failure
-        puts "CRITICAL: FAILED - Puppet failed to run. Missing dependencies? Catalog compilation failed? Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}"
+        failed_resources, long_output_failed_resources = report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_multiline_failed_resources_output)
+        puts "CRITICAL: FAILED - Puppet failed to run. #{failed_resources}Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}\n#{long_output_failed_resources}"
         exit 2
     elsif failcount_resources >= crit
         puts "CRITICAL: Puppet last ran had #{failcount_resources} failed resources #{failcount_events} failed events, expected < #{crit}#{used_puppetserver}#{perfdata_time}"
