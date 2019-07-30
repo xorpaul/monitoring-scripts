@@ -148,7 +148,7 @@ def report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_mul
     report.resource_statuses.each do |resource_name,resource|
       if resource.failed
         failed_resources << resource_name
-        single_long_output_failed_resources = "\nResource #{resource_name} failed:\n\t#{resource.events[0].message}"
+        single_long_output_failed_resources = "\nResource #{resource_name} failed:\n\t#{resource.events[0].message if resource.events[0]}"
         single_long_output_failed_resources = single_long_output_failed_resources.gsub("\n","</br>\n") if enable_check_mk_html_breaks
         long_output_failed_resources += single_long_output_failed_resources
       end
@@ -158,7 +158,9 @@ def report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_mul
   end
 
   failed_resources_text = "Failed Puppet resources: "
+  failed_resources_text += "<b><font color='red'>" if enable_check_mk_html_breaks
   failed_resources_text += failed_resources.join(" ")
+  failed_resources_text += "</font></b>" if enable_check_mk_html_breaks
   failed_resources_text = "There are #{failed_resources.size} failed Puppet resources." if failed_resources.size > 10
 
   return failed_resources_text+" ", long_output_failed_resources
@@ -257,7 +259,7 @@ unless failures
 
     if total_failure
         failed_resources, long_output_failed_resources = report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_multiline_failed_resources_output)
-        puts "CRITICAL: FAILED - Puppet failed to run. #{failed_resources}Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}\n#{long_output_failed_resources}"
+        puts "CRITICAL: #{failed_resources}Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}\n#{long_output_failed_resources}"
         exit 2
     elsif time_since_last_run >= crit
         puts "CRITICAL: last run #{time_since_last_run_string}, expected < #{crit}s#{used_puppetserver}#{perfdata_time}"
@@ -285,7 +287,7 @@ else
 
     if total_failure
         failed_resources, long_output_failed_resources = report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_multiline_failed_resources_output)
-        puts "CRITICAL: FAILED - Puppet failed to run. #{failed_resources}Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}\n#{long_output_failed_resources}"
+        puts "CRITICAL: #{failed_resources}Last run #{time_since_last_run_string}#{used_puppetserver}#{perfdata_time}\n#{long_output_failed_resources}"
         exit 2
     elsif failcount_resources >= crit
         puts "CRITICAL: Puppet last ran had #{failcount_resources} failed resources #{failcount_events} failed events, expected < #{crit}#{used_puppetserver}#{perfdata_time}"
