@@ -142,6 +142,7 @@ lastrun = File.stat(statefile).mtime.to_i if File.exists?(statefile)
 def report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_multiline_failed_resources_output)
   return "", "" if disable_multiline_failed_resources_output
   failed_resources = []
+  failed_catalog = false
   long_output_failed_resources = ""
   begin
     report = YAML.load_file(reportfile)
@@ -153,11 +154,20 @@ def report_failed_resources(reportfile, enable_check_mk_html_breaks, disable_mul
         long_output_failed_resources += single_long_output_failed_resources
       end
     end
+    report.logs.each do |resource|
+      if (resource.level).match(/err/)
+        if (resource.message).match(/Error 500 on SERVER/)
+          failed_catalog = true
+        end
+      end
+    end
+
   rescue => e
     puts "Unable to report the failed resource messages, because:\n#{e}"
   end
 
   failed_resources_text = "Failed Puppet resources: "
+  failed_resources_text += "Error 500 on SERVER " if failed_catalog
   failed_resources_text += "<b><font color='red'>" if enable_check_mk_html_breaks
   failed_resources_text += failed_resources.join(" ")
   failed_resources_text += "</font></b>" if enable_check_mk_html_breaks
